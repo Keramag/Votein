@@ -10,7 +10,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik_proxy"
-      - "traefik.http.routers.votein.rule=Host(`${VOTEIN_HOST:-votein.dev.wandergeek.org}`)"
+      - "traefik.http.routers.votein.rule=Host(`${VOTEIN_HOST:-votein.mullbot.wandergeek.org}`)"
       - "traefik.http.routers.votein.entrypoints=websecure"
       - "traefik.http.routers.votein.tls.certresolver=letsencrypt"
       - "traefik.http.services.votein.loadbalancer.server.port=3000"
