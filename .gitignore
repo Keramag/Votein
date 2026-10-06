@@ -42,3 +42,6 @@ next-env.d.ts
 
 # raw upstream dataset (re-created by npm run build:data)
 /data/
+
+# local sqlite data
+/.data/

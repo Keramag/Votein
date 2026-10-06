@@ -46,3 +46,31 @@ export function searchExercises({ q, target, equipment, bodyPart }: Filters) {
       (!bodyPart || e.bodyPart === bodyPart),
   );
 }
+
+const byId = new Map(exercises.map((e) => [e.id, e]));
+
+export type ExerciseMeta = {
+  id: string;
+  name: string;
+  target: string;
+  equipment: string;
+  image: string;
+};
+
+export const toMeta = (e: Exercise): ExerciseMeta => ({
+  id: e.id,
+  name: e.name,
+  target: e.target,
+  equipment: e.equipment,
+  image: imageUrl(e),
+});
+
+/** Meta for the given ids; unknown ids are skipped. */
+export function metaFor(ids: Iterable<string>) {
+  const out: Record<string, ExerciseMeta> = {};
+  for (const id of ids) {
+    const e = byId.get(id);
+    if (e) out[id] = toMeta(e);
+  }
+  return out;
+}

@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     ports:
       - "3100:3000"
+    volumes:
+      - votein-data:/data
     networks:
       - traefik_proxy
     labels:
@@ -14,6 +16,9 @@ services:
       - "traefik.http.routers.votein.entrypoints=websecure"
       - "traefik.http.routers.votein.tls.certresolver=letsencrypt"
       - "traefik.http.services.votein.loadbalancer.server.port=3000"
+
+volumes:
+  votein-data:
 
 networks:
   traefik_proxy:

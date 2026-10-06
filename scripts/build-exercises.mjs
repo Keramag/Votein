@@ -16,7 +16,7 @@ if (!existsSync(SRC)) {
 const raw = JSON.parse(readFileSync(SRC, "utf8"));
 const slim = raw.map((e) => ({
   id: e.id,
-  name: e.name,
+  name: e.name.replace(/в°/g, "°"),
   bodyPart: e.body_part,
   equipment: e.equipment,
   target: e.target,
