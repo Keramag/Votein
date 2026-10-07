@@ -3,7 +3,7 @@
 import { MUSCLES, MUSCLE_BY_KEY, secondaryMuscles, type Category } from "./muscles.ts";
 import type { ProgramDay, ProgramItem } from "./program.ts";
 
-export type Goal = "strength" | "hypertrophy" | "endurance";
+export type Goal = "strength" | "hypertrophy";
 
 export type PoolExercise = {
   id: string;
@@ -22,11 +22,39 @@ export type GenInput = {
   /** dataset equipment values that are available */
   equipment: string[];
   goal?: Goal;
+  /** strength goal only: weekly working sets per lift key (see STRENGTH_LIFTS) */
+  lifts?: Record<string, number>;
   seed?: number;
 };
 
+export type StrengthLift = {
+  key: string;
+  label: string;
+  /** dataset exercise id */
+  id: string;
+  cat: "legs" | "push" | "pull";
+  reps: string;
+  restSec: number;
+  /** default weekly sets */
+  def: number;
+};
+
+export const STRENGTH_LIFTS: StrengthLift[] = [
+  { key: "squat", label: "Back squat", id: "0043", cat: "legs", reps: "3-5", restSec: 180, def: 9 },
+  { key: "deadlift", label: "Deadlift", id: "0032", cat: "legs", reps: "2-5", restSec: 210, def: 4 },
+  { key: "rdl", label: "Romanian deadlift", id: "0085", cat: "legs", reps: "5-8", restSec: 150, def: 3 },
+  { key: "bench", label: "Bench press", id: "0025", cat: "push", reps: "3-5", restSec: 180, def: 9 },
+  { key: "incline", label: "Incline bench press", id: "0047", cat: "push", reps: "5-8", restSec: 150, def: 3 },
+  { key: "ohp", label: "Overhead press", id: "0091", cat: "push", reps: "3-6", restSec: 180, def: 6 },
+  { key: "row", label: "Barbell row", id: "0027", cat: "pull", reps: "5-8", restSec: 150, def: 6 },
+  { key: "pullup", label: "Weighted pull-up", id: "0841", cat: "pull", reps: "4-6", restSec: 150, def: 6 },
+  { key: "dip", label: "Weighted dip", id: "3313", cat: "push", reps: "5-8", restSec: 150, def: 3 },
+];
+
 export type MuscleSummary = {
   muscle: string;
+  /** display name when `muscle` is not a muscle key (strength lifts) */
+  label?: string;
   target: number;
   /** direct sets + half credit for sets where the muscle is a secondary mover */
   achieved: number;
@@ -51,7 +79,6 @@ const MAX_SESSION_SETS = 10;
 const PARAMS: Record<Goal, { comp: [string, number]; iso: [string, number]; compRest: number; isoRest: number }> = {
   strength: { comp: ["4-6", 0], iso: ["8-12", 0], compRest: 180, isoRest: 120 },
   hypertrophy: { comp: ["6-10", 0], iso: ["10-15", 0], compRest: 120, isoRest: 75 },
-  endurance: { comp: ["12-15", 0], iso: ["15-20", 0], compRest: 60, isoRest: 45 },
 };
 
 const EQUIPMENT_SCORE: Record<string, number> = {
@@ -206,8 +233,126 @@ const dayMinutes = (slots: Slot[]) =>
     ? Math.ceil(WARMUP_MIN + slots.reduce((s, x) => s + slotSeconds(x.sets, x.rest), 0) / 60)
     : 0;
 
+function generateStrength(input: GenInput, pool: PoolExercise[]): Program {
+  const n = Math.min(7, Math.max(1, Math.round(input.days)));
+  const limit = Math.max(15, input.minutes);
+  const equip = new Set(input.equipment);
+  const warnings: string[] = [];
+  const byId = new Map(pool.map((e) => [e.id, e]));
+
+  const dayslots: Slot[][] = Array.from({ length: n }, () => []);
+  const load = new Array<number>(n).fill(0);
+  const catLoad = dayslots.map(() => ({ legs: 0, push: 0, pull: 0 }));
+
+  const picked = STRENGTH_LIFTS.filter((l) => (input.lifts?.[l.key] ?? 0) >= 1).map((l) => ({
+    l,
+    sets: Math.min(60, Math.round(input.lifts![l.key])),
+  }));
+  const usable = picked.filter(({ l }) => {
+    const e = byId.get(l.id);
+    if (e && equip.has(e.equipment)) return true;
+    warnings.push(`${l.label} needs ${e?.equipment ?? "other"} equipment, which isn't selected.`);
+    return false;
+  });
+
+  // heaviest demands first so they get the emptiest days
+  for (const { l, sets: total } of usable.sort((a, b) => b.sets - a.sets)) {
+    const e = byId.get(l.id)!;
+    const f = Math.min(n, Math.max(1, Math.ceil(total / 5)), 4);
+    const chosen: number[] = [];
+    for (let k = 0; k < f; k++) {
+      let best = -1;
+      let bestCost = Infinity;
+      for (let d = 0; d < n; d++) {
+        if (chosen.includes(d)) continue;
+        // keep sessions of one lift apart and avoid stacking the same movement group
+        const adjacent = chosen.some((c) => Math.abs(c - d) === 1) ? 4 : 0;
+        const cost = load[d] + catLoad[d][l.cat] * 1.5 + adjacent;
+        if (cost < bestCost) {
+          bestCost = cost;
+          best = d;
+        }
+      }
+      chosen.push(best);
+    }
+    chosen.sort((a, b) => a - b);
+    chosen.forEach((d, i) => {
+      const sets = Math.floor(total / f) + (i < total % f ? 1 : 0);
+      if (sets <= 0) return;
+      dayslots[d].push({
+        muscle: l.key,
+        ex: { ...e, score: 0, compound: true, indirect: [] },
+        sets,
+        rest: l.restSec,
+        reps: l.reps,
+      });
+      load[d] += sets;
+      catLoad[d][l.cat] += sets;
+    });
+  }
+
+  const liftOrder = (s: Slot) => STRENGTH_LIFTS.findIndex((l) => l.key === s.muscle);
+  const setsOf = (key: string) => dayslots.reduce((a, d) => a + d.reduce((b, s) => b + (s.muscle === key ? s.sets : 0), 0), 0);
+  const targetOf = (key: string) => Math.min(60, Math.round(input.lifts?.[key] ?? 0));
+
+  // trim over-long days from the lift furthest ahead of its target
+  for (const [di, day] of dayslots.entries()) {
+    while (day.length && dayMinutes(day) > limit) {
+      let vi = 0;
+      let vScore = -Infinity;
+      day.forEach((s, i) => {
+        const sc = setsOf(s.muscle) / (targetOf(s.muscle) || 1) + i * 0.01;
+        if (sc > vScore) {
+          vScore = sc;
+          vi = i;
+        }
+      });
+      if (day.length === 1 && day[0].sets <= 1) break;
+      if (day[vi].sets > 1) day[vi].sets--;
+      else day.splice(vi, 1);
+    }
+    if (dayMinutes(day) > limit) warnings.push(`Day ${di + 1} can't fit in ${limit} min.`);
+  }
+
+  const kept = dayslots.map((slots) => slots.sort((a, b) => liftOrder(a) - liftOrder(b))).filter((s) => s.length);
+  if (kept.length < n) warnings.push(`Dropped ${n - kept.length} empty training day(s).`);
+
+  const pattern = WEEKDAY_PATTERN[kept.length] ?? [];
+  const days: ProgramDay[] = kept.map((slots, i) => {
+    const cats = new Set(slots.map((s) => STRENGTH_LIFTS.find((l) => l.key === s.muscle)!.cat));
+    return {
+      name: cats.size === 1 ? { legs: "Lower", push: "Push", pull: "Pull" }[[...cats][0]] : `Day ${i + 1}`,
+      weekday: pattern[i] ?? null,
+      items: slots.map<ProgramItem>((s) => ({ exerciseId: s.ex.id, sets: s.sets, reps: s.reps, restSec: s.rest })),
+    };
+  });
+  // number repeated day names, like the hypertrophy layouts do
+  const counts = new Map<string, number>();
+  for (const d of days) counts.set(d.name, (counts.get(d.name) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  for (const d of days)
+    if ((counts.get(d.name) ?? 0) > 1) {
+      const i = seen.get(d.name) ?? 0;
+      seen.set(d.name, i + 1);
+      d.name = `${d.name} ${"ABCDEFG"[i]}`;
+    }
+
+  const summary: MuscleSummary[] = usable.map(({ l }) => ({
+    muscle: l.key,
+    label: l.label,
+    target: targetOf(l.key),
+    achieved: setsOf(l.key),
+  }));
+  for (const s of summary)
+    if (s.achieved < s.target) warnings.push(`${s.label}: ${s.achieved} of ${s.target} weekly sets fit. Add training days or session time to reach it.`);
+  if (!usable.length && !warnings.length) warnings.push("Pick at least one lift.");
+
+  return { days, minutes: kept.map(dayMinutes), summary, warnings };
+}
+
 export function generateProgram(input: GenInput, pool: PoolExercise[]): Program {
   const goal = input.goal ?? "hypertrophy";
+  if (goal === "strength") return generateStrength(input, pool);
   const P = PARAMS[goal];
   const rand = mulberry32(input.seed ?? 1);
   const n = Math.min(7, Math.max(1, Math.round(input.days)));
