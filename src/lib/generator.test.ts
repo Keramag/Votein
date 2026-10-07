@@ -49,17 +49,17 @@ test("deterministic per seed, varies across seeds", () => {
 });
 
 test("strength goal programs only the chosen lifts", () => {
-  const lifts = { squat: 8, bench: 8, row: 6, pullup: 0, deadlift: 4 };
+  const lifts = { lowbar: 8, bench: 8, row: 6, pullup: 0, deadlift: 4 };
   const p = generateProgram({ targets: {}, lifts, days: 4, minutes: 75, equipment: full, goal: "strength" }, pool);
   const names = new Map(pool.map((e) => [e.id, e.name]));
   const used = new Set(p.days.flatMap((d) => d.items.map((i) => names.get(i.exerciseId))));
-  assert.deepEqual([...used].sort(), ["barbell bench press", "barbell bent over row", "barbell deadlift", "barbell full squat"]);
+  assert.deepEqual([...used].sort(), ["barbell bench press", "barbell bent over row", "barbell deadlift", "barbell low bar squat"]);
   for (const m of p.minutes) assert.ok(m <= 75);
   for (const s of p.summary) assert.equal(s.achieved, s.target);
 });
 
 test("strength lifts needing unavailable equipment are skipped with a warning", () => {
-  const p = generateProgram({ targets: {}, lifts: { squat: 6, pullup: 6 }, days: 3, minutes: 60, equipment: ["barbell"], goal: "strength" }, pool);
+  const p = generateProgram({ targets: {}, lifts: { lowbar: 6, pullup: 6 }, days: 3, minutes: 60, equipment: ["barbell"], goal: "strength" }, pool);
   assert.equal(p.summary.length, 1);
   assert.ok(p.warnings.some((w) => w.includes("Weighted pull-up")));
 });

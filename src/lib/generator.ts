@@ -40,7 +40,8 @@ export type StrengthLift = {
 };
 
 export const STRENGTH_LIFTS: StrengthLift[] = [
-  { key: "squat", label: "Back squat", id: "0043", cat: "legs", reps: "3-5", restSec: 180, def: 9 },
+  { key: "highbar", label: "High bar squat", id: "1436", cat: "legs", reps: "3-5", restSec: 180, def: 5 },
+  { key: "lowbar", label: "Low bar squat", id: "1435", cat: "legs", reps: "3-5", restSec: 180, def: 4 },
   { key: "deadlift", label: "Deadlift", id: "0032", cat: "legs", reps: "2-5", restSec: 210, def: 4 },
   { key: "rdl", label: "Romanian deadlift", id: "0085", cat: "legs", reps: "5-8", restSec: 150, def: 3 },
   { key: "bench", label: "Bench press", id: "0025", cat: "push", reps: "3-5", restSec: 180, def: 9 },
