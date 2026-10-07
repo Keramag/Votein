@@ -5,10 +5,11 @@ import { generateProgram } from "@/lib/generator";
 
 const body = z.object({
   targets: z.record(z.string(), z.number().min(0).max(60)),
+  lifts: z.record(z.string(), z.number().min(0).max(60)).optional(),
   days: z.number().int().min(1).max(7),
   minutes: z.number().int().min(15).max(240),
   equipment: z.array(z.string()).max(40),
-  goal: z.enum(["strength", "hypertrophy", "endurance"]).optional(),
+  goal: z.enum(["strength", "hypertrophy"]).optional(),
   seed: z.number().int().optional(),
 });
 

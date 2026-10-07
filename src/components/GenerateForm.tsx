@@ -6,7 +6,7 @@ import { api } from "./api";
 import { EQUIPMENT_GROUPS, EQUIPMENT_PRESETS, MUSCLES, groupsToValues, muscleLabel } from "@/lib/muscles";
 import { WEEKDAYS, type ProgramDay } from "@/lib/program";
 import type { ExerciseMeta } from "@/lib/exercises";
-import type { Goal, MuscleSummary } from "@/lib/generator";
+import { STRENGTH_LIFTS, type Goal, type MuscleSummary } from "@/lib/generator";
 
 type Result = {
   days: ProgramDay[];
@@ -23,14 +23,14 @@ const VOLUME_PRESETS = [
 ];
 
 const GOALS: { value: Goal; label: string }[] = [
-  { value: "strength", label: "Strength (low reps)" },
   { value: "hypertrophy", label: "Muscle growth" },
-  { value: "endurance", label: "Endurance (high reps)" },
+  { value: "strength", label: "Strength" },
 ];
 
 export default function GenerateForm() {
   const router = useRouter();
   const [targets, setTargets] = useState<Record<string, number>>(() => Object.fromEntries(MUSCLES.map((m) => [m.key, m.def])));
+  const [lifts, setLifts] = useState<Record<string, number>>(() => Object.fromEntries(STRENGTH_LIFTS.map((l) => [l.key, l.def])));
   const [days, setDays] = useState(4);
   const [minutes, setMinutes] = useState(60);
   const [groups, setGroups] = useState<string[]>(EQUIPMENT_PRESETS[0].groups);
@@ -40,7 +40,11 @@ export default function GenerateForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const totalSets = Object.values(targets).reduce((a, b) => a + b, 0);
+  const strength = goal === "strength";
+  const items = strength ? STRENGTH_LIFTS.map((l) => ({ key: l.key, label: l.label, def: l.def })) : MUSCLES;
+  const values = strength ? lifts : targets;
+  const setValues = strength ? setLifts : setTargets;
+  const totalSets = Object.values(values).reduce((a, b) => a + b, 0);
 
   async function generate(nextSeed = seed) {
     setBusy(true);
@@ -49,6 +53,7 @@ export default function GenerateForm() {
       setResult(
         await api<Result>("/api/generate", "POST", {
           targets,
+          lifts,
           days,
           minutes,
           equipment: groupsToValues(groups),
@@ -82,13 +87,13 @@ export default function GenerateForm() {
 
       <section className="card p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-semibold">Weekly sets per muscle</h2>
+          <h2 className="font-semibold">{strength ? "Exercises per week" : "Weekly sets per muscle"}</h2>
           <div className="flex gap-1">
             {VOLUME_PRESETS.map((p) => (
               <button
                 key={p.label}
                 className="btn min-h-8 px-2 py-1 text-xs"
-                onClick={() => setTargets(Object.fromEntries(MUSCLES.map((m) => [m.key, Math.round(m.def * p.mult)])))}
+                onClick={() => setValues(Object.fromEntries(items.map((m) => [m.key, Math.round(m.def * p.mult)])))}
               >
                 {p.label}
               </button>
@@ -96,30 +101,30 @@ export default function GenerateForm() {
           </div>
         </div>
         <div className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
-          {MUSCLES.map((m) => (
+          {items.map((m) => (
             <div key={m.key} className="flex items-center justify-between gap-2">
               <label htmlFor={`t-${m.key}`} className="text-sm">
                 {m.label}
               </label>
               <div className="flex items-center gap-1">
-                <button className="btn w-9 px-0" aria-label={`Fewer ${m.label} sets`} onClick={() => setTargets((t) => ({ ...t, [m.key]: Math.max(0, t[m.key] - 1) }))}>
+                <button className="btn w-9 px-0" aria-label={`Fewer ${m.label} sets`} onClick={() => setValues((t) => ({ ...t, [m.key]: Math.max(0, t[m.key] - 1) }))}>
                   −
                 </button>
                 <input
                   id={`t-${m.key}`}
                   className="input w-14 px-1 text-center"
                   inputMode="numeric"
-                  value={targets[m.key]}
-                  onChange={(e) => setTargets((t) => ({ ...t, [m.key]: Math.min(60, Number(e.target.value.replace(/\D/g, "")) || 0) }))}
+                  value={values[m.key]}
+                  onChange={(e) => setValues((t) => ({ ...t, [m.key]: Math.min(60, Number(e.target.value.replace(/\D/g, "")) || 0) }))}
                 />
-                <button className="btn w-9 px-0" aria-label={`More ${m.label} sets`} onClick={() => setTargets((t) => ({ ...t, [m.key]: Math.min(60, t[m.key] + 1) }))}>
+                <button className="btn w-9 px-0" aria-label={`More ${m.label} sets`} onClick={() => setValues((t) => ({ ...t, [m.key]: Math.min(60, t[m.key] + 1) }))}>
                   +
                 </button>
               </div>
             </div>
           ))}
         </div>
-        <p className="muted mt-3 text-xs">{totalSets} sets per week in total. Set a muscle to 0 to skip it.</p>
+        <p className="muted mt-3 text-xs">{totalSets} sets per week in total{strength ? ", split across the lifts" : ""}. Set {strength ? "an exercise" : "a muscle"} to 0 to skip it.</p>
       </section>
 
       <section className="card space-y-4 p-4">
@@ -226,12 +231,12 @@ export default function GenerateForm() {
             </div>
           ))}
           <div className="card p-3">
-            <h3 className="mb-2 font-semibold">Weekly volume</h3>
+            <h3 className="mb-2 font-semibold">{strength ? "Weekly sets" : "Weekly volume"}</h3>
             <ul className="space-y-2 text-sm">
               {result.summary.map((s) => (
                 <li key={s.muscle}>
                   <div className="flex justify-between">
-                    <span>{muscleLabel(s.muscle)}</span>
+                    <span>{s.label ?? muscleLabel(s.muscle)}</span>
                     <span className="muted">
                       {s.achieved} / {s.target}
                     </span>
@@ -242,7 +247,7 @@ export default function GenerateForm() {
                 </li>
               ))}
             </ul>
-            <p className="muted mt-2 text-xs">Sets where a muscle assists (e.g. triceps in a bench press) count as half a set, up to half the target.</p>
+            {!strength && <p className="muted mt-2 text-xs">Sets where a muscle assists (e.g. triceps in a bench press) count as half a set, up to half the target.</p>}
           </div>
           <div className="flex gap-2">
             <button className="btn btn-primary flex-1" onClick={save} disabled={busy}>
