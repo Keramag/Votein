@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "./api";
+import PrintButton from "./PrintButton";
+import PrintableProgram from "./PrintableProgram";
 import { EQUIPMENT_GROUPS, EQUIPMENT_PRESETS, MUSCLES, groupsToValues, muscleLabel } from "@/lib/muscles";
 import { WEEKDAYS, type ProgramDay } from "@/lib/program";
 import type { ExerciseMeta } from "@/lib/exercises";
@@ -121,12 +123,13 @@ export default function GenerateForm() {
     }
   }
 
+  const programName = `${days}-day ${goal === "hypertrophy" ? "muscle growth" : goal} program`;
+
   async function save() {
     if (!result) return;
     setBusy(true);
     try {
-      const name = `${days}-day ${GOALS.find((g) => g.value === goal)!.label.split(" (")[0].toLowerCase()} program`;
-      const { id } = await api<{ id: number }>("/api/splits", "POST", { name, days: result.days });
+      const { id } = await api<{ id: number }>("/api/splits", "POST", { name: programName, days: result.days });
       router.push(`/splits/${id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -136,6 +139,8 @@ export default function GenerateForm() {
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-4 p-4">
+      {result && <PrintableProgram title={programName} subtitle={`${minutes} min sessions`} days={result.days} meta={result.meta} />}
+      <div className="space-y-4 print:hidden">
       <h1 className="text-2xl font-bold">Program generator</h1>
 
       {showMuscles && (
@@ -295,9 +300,11 @@ export default function GenerateForm() {
             >
               Shuffle exercises
             </button>
+            <PrintButton />
           </div>
         </section>
       )}
+      </div>
     </div>
   );
 }
