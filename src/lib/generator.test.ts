@@ -63,3 +63,19 @@ test("strength lifts needing unavailable equipment are skipped with a warning", 
   assert.equal(p.summary.length, 1);
   assert.ok(p.warnings.some((w) => w.includes("Weighted pull-up")));
 });
+
+test("powerbuilding mixes heavy lifts with higher-rep accessories", () => {
+  const lifts = { lowbar: 6, bench: 6, row: 6, ohp: 3 };
+  const p = generateProgram({ targets, lifts, days: 4, minutes: 90, equipment: full, goal: "powerbuilding" }, pool);
+  const lo = (r: string) => Number(r.split("-")[0]);
+  const heavy = p.days.flatMap((d) => d.items).filter((i) => lo(i.reps) <= 5);
+  const light = p.days.flatMap((d) => d.items).filter((i) => lo(i.reps) >= 6);
+  assert.ok(heavy.length >= 4 && light.length >= 4);
+  const heavyIds = new Set(heavy.map((i) => i.exerciseId));
+  for (const i of light) assert.ok(!heavyIds.has(i.exerciseId));
+  const accessoryIds = light.map((i) => i.exerciseId);
+  assert.equal(new Set(accessoryIds).size, accessoryIds.length);
+  for (const m of p.minutes) assert.ok(m <= 90, `day over limit: ${m}`);
+  for (const l of ["Low bar squat", "Bench press"]) assert.ok(p.summary.some((s) => s.label === l && s.achieved === s.target));
+  assert.ok(p.summary.some((s) => !s.label));
+});
