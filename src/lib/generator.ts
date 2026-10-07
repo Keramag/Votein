@@ -3,7 +3,7 @@
 import { MUSCLES, MUSCLE_BY_KEY, secondaryMuscles, type Category } from "./muscles.ts";
 import type { ProgramDay, ProgramItem } from "./program.ts";
 
-export type Goal = "strength" | "hypertrophy";
+export type Goal = "strength" | "hypertrophy" | "powerbuilding";
 
 export type PoolExercise = {
   id: string;
@@ -77,7 +77,7 @@ const MAX_CREDIT_SHARE = 0.5; // indirect sets count for at most half of a muscl
 const MIN_SETS = 2;
 const MAX_SESSION_SETS = 10;
 
-const PARAMS: Record<Goal, { comp: [string, number]; iso: [string, number]; compRest: number; isoRest: number }> = {
+const PARAMS: Record<"strength" | "hypertrophy", { comp: [string, number]; iso: [string, number]; compRest: number; isoRest: number }> = {
   strength: { comp: ["4-6", 0], iso: ["8-12", 0], compRest: 180, isoRest: 120 },
   hypertrophy: { comp: ["6-10", 0], iso: ["10-15", 0], compRest: 120, isoRest: 75 },
 };
@@ -219,7 +219,7 @@ const WEEKDAY_PATTERN: Record<number, number[]> = {
   7: [0, 1, 2, 3, 4, 5, 6],
 };
 
-type Slot = { muscle: string; ex: Scored; sets: number; rest: number; reps: string };
+type Slot = { muscle: string; ex: Scored; sets: number; rest: number; reps: string; lift?: boolean };
 
 function normalizeName(n: string) {
   return n.replace(/\s*\((male|female)\)/gi, "").trim().toLowerCase();
@@ -234,17 +234,18 @@ const dayMinutes = (slots: Slot[]) =>
     ? Math.ceil(WARMUP_MIN + slots.reduce((s, x) => s + slotSeconds(x.sets, x.rest), 0) / 60)
     : 0;
 
-function generateStrength(input: GenInput, pool: PoolExercise[]): Program {
-  const n = Math.min(7, Math.max(1, Math.round(input.days)));
-  const limit = Math.max(15, input.minutes);
+/** Spreads the chosen strength lifts over the days; returns the lifts that could be placed. */
+function placeLifts(
+  input: GenInput,
+  byId: Map<string, PoolExercise>,
+  n: number,
+  dayslots: Slot[][],
+  load: number[],
+  allowed: (cat: StrengthLift["cat"], day: number) => boolean,
+  warnings: string[],
+) {
   const equip = new Set(input.equipment);
-  const warnings: string[] = [];
-  const byId = new Map(pool.map((e) => [e.id, e]));
-
-  const dayslots: Slot[][] = Array.from({ length: n }, () => []);
-  const load = new Array<number>(n).fill(0);
   const catLoad = dayslots.map(() => ({ legs: 0, push: 0, pull: 0 }));
-
   const picked = STRENGTH_LIFTS.filter((l) => (input.lifts?.[l.key] ?? 0) >= 1).map((l) => ({
     l,
     sets: Math.min(60, Math.round(input.lifts![l.key])),
@@ -259,12 +260,17 @@ function generateStrength(input: GenInput, pool: PoolExercise[]): Program {
   // heaviest demands first so they get the emptiest days
   for (const { l, sets: total } of usable.sort((a, b) => b.sets - a.sets)) {
     const e = byId.get(l.id)!;
-    const f = Math.min(n, Math.max(1, Math.ceil(total / 5)), 4);
+    const days = Array.from({ length: n }, (_, d) => d).filter((d) => allowed(l.cat, d));
+    if (!days.length) {
+      warnings.push(`${l.label} doesn't fit this ${n}-day layout.`);
+      continue;
+    }
+    const f = Math.min(days.length, Math.max(1, Math.ceil(total / 5)), 4);
     const chosen: number[] = [];
     for (let k = 0; k < f; k++) {
       let best = -1;
       let bestCost = Infinity;
-      for (let d = 0; d < n; d++) {
+      for (const d of days) {
         if (chosen.includes(d)) continue;
         // keep sessions of one lift apart and avoid stacking the same movement group
         const adjacent = chosen.some((c) => Math.abs(c - d) === 1) ? 4 : 0;
@@ -282,7 +288,8 @@ function generateStrength(input: GenInput, pool: PoolExercise[]): Program {
       if (sets <= 0) return;
       dayslots[d].push({
         muscle: l.key,
-        ex: { ...e, score: 0, compound: true, indirect: [] },
+        ex: { ...e, score: 0, compound: true, indirect: secondaryMuscles(e.secondary, e.target) },
+        lift: true,
         sets,
         rest: l.restSec,
         reps: l.reps,
@@ -291,6 +298,19 @@ function generateStrength(input: GenInput, pool: PoolExercise[]): Program {
       catLoad[d][l.cat] += sets;
     });
   }
+
+  return usable;
+}
+
+function generateStrength(input: GenInput, pool: PoolExercise[]): Program {
+  const n = Math.min(7, Math.max(1, Math.round(input.days)));
+  const limit = Math.max(15, input.minutes);
+  const warnings: string[] = [];
+  const byId = new Map(pool.map((e) => [e.id, e]));
+
+  const dayslots: Slot[][] = Array.from({ length: n }, () => []);
+  const load = new Array<number>(n).fill(0);
+  const usable = placeLifts(input, byId, n, dayslots, load, () => true, warnings);
 
   const liftOrder = (s: Slot) => STRENGTH_LIFTS.findIndex((l) => l.key === s.muscle);
   const setsOf = (key: string) => dayslots.reduce((a, d) => a + d.reduce((b, s) => b + (s.muscle === key ? s.sets : 0), 0), 0);
@@ -354,7 +374,7 @@ function generateStrength(input: GenInput, pool: PoolExercise[]): Program {
 export function generateProgram(input: GenInput, pool: PoolExercise[]): Program {
   const goal = input.goal ?? "hypertrophy";
   if (goal === "strength") return generateStrength(input, pool);
-  const P = PARAMS[goal];
+  const P = PARAMS.hypertrophy;
   const rand = mulberry32(input.seed ?? 1);
   const n = Math.min(7, Math.max(1, Math.round(input.days)));
   const limit = Math.max(15, input.minutes);
@@ -396,6 +416,16 @@ export function generateProgram(input: GenInput, pool: PoolExercise[]): Program 
   const used = new Set<string>();
   const credit: Record<string, number> = {};
 
+  // powerbuilding: heavy lifts go in first, and their sets count toward the muscle targets
+  const placed = goal === "powerbuilding" ? placeLifts(input, new Map(pool.map((e) => [e.id, e])), themes.length, dayslots, load, (cat, d) => themes[d].cats.includes(cat), warnings) : [];
+  const liftDirect: Record<string, number> = {};
+  for (const day of dayslots)
+    for (const sl of day) {
+      used.add(sl.ex.id);
+      liftDirect[sl.ex.target] = (liftDirect[sl.ex.target] ?? 0) + sl.sets;
+      for (const m of sl.ex.indirect) credit[m] = (credit[m] ?? 0) + INDIRECT_CREDIT * sl.sets;
+    }
+
   const order = [...MUSCLES].sort((a, b) => Number(b.large) - Number(a.large));
   for (const m of order) {
     const target = targets[m.key];
@@ -406,9 +436,11 @@ export function generateProgram(input: GenInput, pool: PoolExercise[]): Program 
       continue;
     }
 
+    const need = target - (liftDirect[m.key] ?? 0);
+    if (need <= 0) continue;
     const direct = Math.max(
       MIN_SETS,
-      Math.ceil(target - Math.min(credit[m.key] ?? 0, target * MAX_CREDIT_SHARE)),
+      Math.ceil(need - Math.min(credit[m.key] ?? 0, target * MAX_CREDIT_SHARE)),
     );
     const allowed = themes
       .map((t, i) => (m.cat === "core" || t.cats.includes(m.cat) || t.muscles?.includes(m.key) ? i : -1))
@@ -472,7 +504,7 @@ export function generateProgram(input: GenInput, pool: PoolExercise[]): Program 
     let indirect = 0;
     for (const day of dayslots)
       for (const s of day) {
-        if (s.muscle === muscle) direct += s.sets;
+        if ((s.lift ? s.ex.target : s.muscle) === muscle) direct += s.sets;
         else if (s.ex.indirect.includes(muscle)) indirect += INDIRECT_CREDIT * s.sets;
       }
     return direct + Math.min(indirect, (targets[muscle] ?? 0) * MAX_CREDIT_SHARE);
@@ -484,7 +516,7 @@ export function generateProgram(input: GenInput, pool: PoolExercise[]): Program 
       let vi = -1;
       let vScore = -Infinity;
       day.forEach((s, i) => {
-        const frac = achievedOf(s.muscle) / (targets[s.muscle] || 1);
+        const frac = s.lift ? 0 : achievedOf(s.muscle) / (targets[s.muscle] || 1);
         const sc = frac * 10 + (s.ex.compound ? 0 : 1) + i * 0.01;
         if (sc > vScore) {
           vScore = sc;
@@ -499,7 +531,8 @@ export function generateProgram(input: GenInput, pool: PoolExercise[]): Program 
   }
 
   // order within a day: big muscles and compounds first
-  const rank = (s: Slot) => order.findIndex((m) => m.key === s.muscle) + (s.ex.compound ? 0 : 100);
+  const rank = (s: Slot) =>
+    s.lift ? STRENGTH_LIFTS.findIndex((l) => l.key === s.muscle) - 100 : order.findIndex((m) => m.key === s.muscle) + (s.ex.compound ? 0 : 100);
   const kept = themes
     .map((t, i) => ({ t, slots: dayslots[i].sort((a, b) => rank(a) - rank(b)) }))
     .filter((d) => d.slots.length);
@@ -517,6 +550,12 @@ export function generateProgram(input: GenInput, pool: PoolExercise[]): Program 
     })),
   }));
 
+  const liftSummary: MuscleSummary[] = placed.map(({ l, sets }) => ({
+    muscle: l.key,
+    label: l.label,
+    target: sets,
+    achieved: dayslots.reduce((a, d) => a + d.reduce((b, sl) => b + (sl.muscle === l.key ? sl.sets : 0), 0), 0),
+  }));
   const summary: MuscleSummary[] = MUSCLES.filter((m) => targets[m.key]).map((m) => ({
     muscle: m.key,
     target: targets[m.key],
@@ -528,5 +567,8 @@ export function generateProgram(input: GenInput, pool: PoolExercise[]): Program 
         `${MUSCLE_BY_KEY.get(s.muscle)!.label}: ${s.achieved} of ${s.target} weekly sets fit. Add training days or session time to reach it.`,
       );
 
-  return { days, minutes: kept.map((d) => dayMinutes(d.slots)), summary, warnings };
+  for (const s of liftSummary)
+    if (s.achieved < s.target) warnings.push(`${s.label}: ${s.achieved} of ${s.target} weekly sets fit. Add training days or session time to reach it.`);
+
+  return { days, minutes: kept.map((d) => dayMinutes(d.slots)), summary: [...liftSummary, ...summary], warnings };
 }

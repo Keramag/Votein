@@ -25,7 +25,62 @@ const VOLUME_PRESETS = [
 const GOALS: { value: Goal; label: string }[] = [
   { value: "hypertrophy", label: "Muscle growth" },
   { value: "strength", label: "Strength" },
+  { value: "powerbuilding", label: "Both (powerbuilding)" },
 ];
+
+type VolumeItem = { key: string; label: string; def: number };
+
+function VolumeCard({ title, items, values, setValues, hint, noun }: {
+  title: string;
+  items: VolumeItem[];
+  values: Record<string, number>;
+  setValues: React.Dispatch<React.SetStateAction<Record<string, number>>>;
+  hint: string;
+  noun: string;
+}) {
+  const total = Object.values(values).reduce((a, b) => a + b, 0);
+  return (
+    <section className="card p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-semibold">{title}</h2>
+        <div className="flex gap-1">
+          {VOLUME_PRESETS.map((p) => (
+            <button key={p.label} className="btn min-h-8 px-2 py-1 text-xs" onClick={() => setValues(Object.fromEntries(items.map((m) => [m.key, Math.round(m.def * p.mult)])))}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+        {items.map((m) => (
+          <div key={m.key} className="flex items-center justify-between gap-2">
+            <label htmlFor={`t-${m.key}`} className="text-sm">
+              {m.label}
+            </label>
+            <div className="flex items-center gap-1">
+              <button className="btn w-9 px-0" aria-label={`Fewer ${m.label} sets`} onClick={() => setValues((t) => ({ ...t, [m.key]: Math.max(0, t[m.key] - 1) }))}>
+                −
+              </button>
+              <input
+                id={`t-${m.key}`}
+                className="input w-14 px-1 text-center"
+                inputMode="numeric"
+                value={values[m.key]}
+                onChange={(e) => setValues((t) => ({ ...t, [m.key]: Math.min(60, Number(e.target.value.replace(/\D/g, "")) || 0) }))}
+              />
+              <button className="btn w-9 px-0" aria-label={`More ${m.label} sets`} onClick={() => setValues((t) => ({ ...t, [m.key]: Math.min(60, t[m.key] + 1) }))}>
+                +
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="muted mt-3 text-xs">
+        {total} sets per week in total. Set {noun} to 0 to skip it. {hint}
+      </p>
+    </section>
+  );
+}
 
 export default function GenerateForm() {
   const router = useRouter();
@@ -40,11 +95,9 @@ export default function GenerateForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const strength = goal === "strength";
-  const items = strength ? STRENGTH_LIFTS.map((l) => ({ key: l.key, label: l.label, def: l.def })) : MUSCLES;
-  const values = strength ? lifts : targets;
-  const setValues = strength ? setLifts : setTargets;
-  const totalSets = Object.values(values).reduce((a, b) => a + b, 0);
+  const showLifts = goal !== "hypertrophy";
+  const showMuscles = goal !== "strength";
+  const totalSets = (showMuscles ? Object.values(targets) : []).concat(showLifts ? Object.values(lifts) : []).reduce((a, b) => a + b, 0);
 
   async function generate(nextSeed = seed) {
     setBusy(true);
@@ -85,47 +138,26 @@ export default function GenerateForm() {
     <div className="mx-auto w-full max-w-2xl space-y-4 p-4">
       <h1 className="text-2xl font-bold">Program generator</h1>
 
-      <section className="card p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-semibold">{strength ? "Exercises per week" : "Weekly sets per muscle"}</h2>
-          <div className="flex gap-1">
-            {VOLUME_PRESETS.map((p) => (
-              <button
-                key={p.label}
-                className="btn min-h-8 px-2 py-1 text-xs"
-                onClick={() => setValues(Object.fromEntries(items.map((m) => [m.key, Math.round(m.def * p.mult)])))}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
-          {items.map((m) => (
-            <div key={m.key} className="flex items-center justify-between gap-2">
-              <label htmlFor={`t-${m.key}`} className="text-sm">
-                {m.label}
-              </label>
-              <div className="flex items-center gap-1">
-                <button className="btn w-9 px-0" aria-label={`Fewer ${m.label} sets`} onClick={() => setValues((t) => ({ ...t, [m.key]: Math.max(0, t[m.key] - 1) }))}>
-                  −
-                </button>
-                <input
-                  id={`t-${m.key}`}
-                  className="input w-14 px-1 text-center"
-                  inputMode="numeric"
-                  value={values[m.key]}
-                  onChange={(e) => setValues((t) => ({ ...t, [m.key]: Math.min(60, Number(e.target.value.replace(/\D/g, "")) || 0) }))}
-                />
-                <button className="btn w-9 px-0" aria-label={`More ${m.label} sets`} onClick={() => setValues((t) => ({ ...t, [m.key]: Math.min(60, t[m.key] + 1) }))}>
-                  +
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-        <p className="muted mt-3 text-xs">{totalSets} sets per week in total{strength ? ", split across the lifts" : ""}. Set {strength ? "an exercise" : "a muscle"} to 0 to skip it.</p>
-      </section>
+      {showMuscles && (
+        <VolumeCard
+          title="Weekly sets per muscle"
+          items={MUSCLES}
+          values={targets}
+          setValues={setTargets}
+          hint={goal === "powerbuilding" ? "Higher reps. Sets from the lifts below count toward these." : ""}
+          noun="a muscle"
+        />
+      )}
+      {showLifts && (
+        <VolumeCard
+          title="Exercises per week"
+          items={STRENGTH_LIFTS}
+          values={lifts}
+          setValues={setLifts}
+          hint={goal === "powerbuilding" ? "Low reps, heavy." : ""}
+          noun="an exercise"
+        />
+      )}
 
       <section className="card space-y-4 p-4">
         <div>
@@ -231,7 +263,7 @@ export default function GenerateForm() {
             </div>
           ))}
           <div className="card p-3">
-            <h3 className="mb-2 font-semibold">{strength ? "Weekly sets" : "Weekly volume"}</h3>
+            <h3 className="mb-2 font-semibold">Weekly volume</h3>
             <ul className="space-y-2 text-sm">
               {result.summary.map((s) => (
                 <li key={s.muscle}>
@@ -247,7 +279,7 @@ export default function GenerateForm() {
                 </li>
               ))}
             </ul>
-            {!strength && <p className="muted mt-2 text-xs">Sets where a muscle assists (e.g. triceps in a bench press) count as half a set, up to half the target.</p>}
+            {goal !== "strength" && <p className="muted mt-2 text-xs">Sets where a muscle assists (e.g. triceps in a bench press) count as half a set, up to half the target.</p>}
           </div>
           <div className="flex gap-2">
             <button className="btn btn-primary flex-1" onClick={save} disabled={busy}>

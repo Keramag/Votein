@@ -9,7 +9,7 @@ const body = z.object({
   days: z.number().int().min(1).max(7),
   minutes: z.number().int().min(15).max(240),
   equipment: z.array(z.string()).max(40),
-  goal: z.enum(["strength", "hypertrophy"]).optional(),
+  goal: z.enum(["strength", "hypertrophy", "powerbuilding"]).optional(),
   seed: z.number().int().optional(),
 });
 
