@@ -17,7 +17,7 @@ export default function Nav() {
   const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
   return (
     <>
-      <header className="sticky top-0 z-20 hidden border-b border-stone-200 bg-background/90 backdrop-blur md:block dark:border-stone-800">
+      <header className="print:hidden sticky top-0 z-20 hidden border-b border-stone-200 bg-background/90 backdrop-blur md:block dark:border-stone-800">
         <nav className="mx-auto flex max-w-5xl items-center gap-1 px-4 py-2">
           <Link href="/" className="mr-4 text-lg font-bold text-emerald-600">
             Votein
@@ -42,7 +42,7 @@ export default function Nav() {
       </header>
       <nav
         aria-label="Primary"
-        className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-6 border-t border-stone-200 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden dark:border-stone-800"
+        className="print:hidden fixed inset-x-0 bottom-0 z-20 grid grid-cols-6 border-t border-stone-200 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden dark:border-stone-800"
       >
         {LINKS.map((l) => (
           <Link

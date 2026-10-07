@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "./api";
 import ExercisePicker from "./ExercisePicker";
+import PrintButton from "./PrintButton";
+import PrintableProgram from "./PrintableProgram";
 import type { ExerciseMeta } from "@/lib/exercises";
 import { WEEKDAYS, type SplitData } from "@/lib/program";
 
@@ -78,6 +80,8 @@ export default function SplitEditor({
 
   return (
     <div className="mx-auto w-full max-w-2xl p-4">
+      <PrintableProgram title={split.name} days={split.days} meta={meta} />
+      <div className="print:hidden">
       <Link href="/splits" className="muted text-sm">
         ← Splits
       </Link>
@@ -188,6 +192,7 @@ export default function SplitEditor({
             Make active
           </button>
         )}
+        <PrintButton />
         {id && (
           <button className="btn btn-danger" onClick={remove}>
             Delete
@@ -207,6 +212,7 @@ export default function SplitEditor({
           }}
         />
       )}
+      </div>
     </div>
   );
 }

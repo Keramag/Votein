@@ -45,3 +45,17 @@ body {
     @apply text-stone-500 dark:text-stone-400;
   }
 }
+
+@media print {
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .muted {
+    color: #555 !important;
+  }
+  body {
+    padding-bottom: 0 !important;
+  }
+}
